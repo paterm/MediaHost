@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>NowPlaying Host — пульт</title>
+    <style>
+        :root { --muted:#6b7280; --border:#e5e7eb; }
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; color:#111 }
+        h1 { font-size:22px; margin:0 0 14px; }
+        .row { display:flex; gap:10px; flex-wrap:wrap; margin: 12px 0; }
+        button { font-size:15px; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:#f6f6f6; cursor:pointer }
+        button:active { transform: translateY(1px); }
+        .card { border:1px solid var(--border); border-radius:14px; padding:14px; display:flex; gap:14px; align-items:flex-start; }
+        .art { width:128px; height:128px; border-radius:12px; background:#eee; background-size:cover; background-position:center; flex:0 0 auto; }
+        .meta { min-width: 220px; flex:1; }
+        .title { font-weight:700; font-size:18px; }
+        .line { color: var(--muted); margin-top:6px; }
+    </style>
+</head>
+<body>
+<h1>NowPlaying Host — пульт</h1>
+
+<div class="row">
+    <button id="btnPrefer">Сделать Chrome активным</button>
+    <button id="btnPrev">⏮ Prev</button>
+    <button id="btnToggle">⏯ Play/Pause</button>
+    <button id="btnNext">⏭ Next</button>
+</div>
+
+<div class="card">
+    <div class="art" id="art"></div>
+    <div class="meta">
+        <div class="title" id="title">—</div>
+        <div class="line" id="artist">—</div>
+        <div class="line" id="album">—</div>
+        <div class="line" id="player">—</div>
+    </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  // фавикон-тишина, чтобы убрать 404
+  (function(){ const l=document.createElement('link'); l.rel='icon'; l.href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>'; document.head.appendChild(l); })();
+
+  // --- прогресс UI (если верстка уже есть, эта вставка просто ничего не сделает)
+  (function ensureProgressUI(){
+    if (document.getElementById('seek')) return;
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `
+      <input id="seek" type="range" min="0" max="0" value="0" step="500" style="width: 280px;">
+      <span id="tpos">0:00</span> / <span id="tdur">0:00</span>
+    `;
+    const anchor = document.querySelector('.card');
+    (anchor && anchor.after) ? anchor.after(row)
+      : (anchor && anchor.parentNode) ? anchor.parentNode.insertBefore(row, anchor.nextSibling)
+        : (document.body.appendChild(row));
+  })();
+
+  const ws = new WebSocket(`ws://${location.host}`);
+  ws.onopen = () => console.log('[WS] connected');
+
+  let duration = 0, position = 0, isPlaying = false, dragging = false;
+
+  const seek = document.getElementById('seek');
+  const tpos = document.getElementById('tpos');
+  const tdur = document.getElementById('tdur');
+  const btnToggle = $('btnToggle');
+
+  function fmt(ms){ const s=Math.max(0, Math.floor(ms/1000)); const m=(s/60|0), ss=('0'+(s%60)).slice(-2); return `${m}:${ss}`; }
+  function setPlayIcon(){ btnToggle.textContent = isPlaying ? '⏸ Pause' : '▶️ Play'; }
+
+  function renderBlank(){
+    $('title').textContent = '—';
+    $('artist').textContent = '—';
+    $('album').textContent = '—';
+    $('player').textContent = '—';
+    $('art').style.backgroundImage = 'none';
+    duration = 0; position = 0;
+    seek.max = '0'; seek.value = '0';
+    tpos.textContent = '0:00'; tdur.textContent = '0:00';
+    isPlaying = false; setPlayIcon();
+  }
+
+  function renderNowPlaying(np){
+    $('title').textContent = np.title || '—';
+    $('artist').textContent = np.artist || '—';
+    $('album').textContent  = np.album  || '—';
+    $('player').textContent = `player: ${np.player || '—'}`;
+
+    // обложка
+    if (np.artUrl) {
+      const url = np.artUrl.startsWith('file://') ? `/art?src=${encodeURIComponent(np.artUrl)}` : np.artUrl;
+      $('art').style.backgroundImage = `url("${url}")`;
+    } else {
+      $('art').style.backgroundImage = 'none';
+    }
+
+    // длительность
+    duration = np.durationMs || duration || 0;
+    seek.max = String(duration);
+    tdur.textContent = fmt(duration);
+
+    // статус
+    if (typeof np.isPaused === 'boolean') {
+      isPlaying = !np.isPaused;
+      setPlayIcon();
+    }
+  }
+
+  // приём сообщений
+  ws.onmessage = async (e) => {
+    let text;
+    if (typeof e.data === 'string') text = e.data;
+    else if (e.data instanceof Blob) text = await e.data.text();
+    else if (e.data instanceof ArrayBuffer) text = new TextDecoder().decode(e.data);
+    else text = String(e.data);
+
+    let msg; 
+    try { 
+      msg = JSON.parse(text);
+      console.log(msg.type, msg);  
+    } catch { return; }
+
+    if (msg.type === 'snapshot') {
+      if (msg.nowPlaying) renderNowPlaying(msg.nowPlaying);
+      if (typeof msg.status === 'boolean') { isPlaying = msg.status; setPlayIcon(); }
+      if (msg.progress) {
+        duration = msg.progress.durationMs || duration || 0;
+        position = msg.progress.positionMs || 0;
+        seek.max = String(duration);
+        if (!dragging) seek.value = String(Math.min(position, duration));
+        tpos.textContent = fmt(position); tdur.textContent = fmt(duration);
+      }
+      return;
+    }
+
+    if (msg.type === 'nowPlaying') {
+      const np = msg.data;
+      if (!np) { renderBlank(); return; }
+      renderNowPlaying(np);
+      // при старте нового трека позицию сбрасываем
+      position = 0;
+      if (!dragging) seek.value = '0';
+      tpos.textContent = '0:00';
+      return;
+    }
+
+    if (msg.type === 'status') {
+      isPlaying = !!msg.playing;
+      setPlayIcon();
+      return;
+    }
+
+    if (msg.type === 'progress') {
+      if (typeof msg.durationMs === 'number') {
+        duration = msg.durationMs;
+        seek.max = String(duration);
+        tdur.textContent = fmt(duration);
+      }
+      if (typeof msg.positionMs === 'number') {
+        position = msg.positionMs;
+        if (!dragging && duration > 0) seek.value = String(Math.min(position, duration));
+        tpos.textContent = fmt(position);
+      }
+      return;
+    }
+  };
+
+  // контроль перетаскивания: не даём «застрять» dragging = true
+  seek.addEventListener('input', () => { dragging = true; tpos.textContent = fmt(+seek.value); });
+  seek.addEventListener('change', () => {
+    const target = +seek.value;
+    const delta = target - position;
+    dragging = false;
+    if (delta) send({ type:'seek', ms: delta });   // относительный seek
+  });
+  window.addEventListener('pointerup', () => dragging = false, { passive: true });
+  window.addEventListener('touchend', () => dragging = false, { passive: true });
+
+  // команды
+  const send = (cmd) => { try { ws.readyState === 1 && ws.send(JSON.stringify(cmd)); } catch {} };
+  $('btnPrefer').onclick = () => send({ type:'preferChrome' });
+  $('btnPrev').onclick    = () => send({ type:'prev' });
+  btnToggle.onclick       = () => send({ type:'toggle' });
+  $('btnNext').onclick    = () => send({ type:'next' });
+</script>
+
+</body>
+</html>

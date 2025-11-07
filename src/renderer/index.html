@@ -1,0 +1,8 @@
+<!doctype html>
+<html><body style="font-family:system-ui;text-align:center;">
+<h1>HTTP + WS OK ✅</h1>
+<script>
+  const ws = new WebSocket(`ws://${location.host}`);
+  ws.onopen = () => document.body.insertAdjacentHTML('beforeend','<p>WebSocket connected</p>');
+</script>
+</body></html>
