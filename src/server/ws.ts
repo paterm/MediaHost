@@ -9,7 +9,6 @@ export function createWs(server: any, ctx: Ctx) {
   const wss = new WebSocketServer({ server });
 
   wss.on('connection', (socket) => {
-    console.log('on connection');
     // отдаём текущий снапшот моментально
     if (ctx.getSnapshot) {
       const snap = ctx.getSnapshot();

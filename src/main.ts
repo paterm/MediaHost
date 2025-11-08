@@ -34,20 +34,18 @@ app.whenReady().then(async () => {
 
   const mpris = new MprisController({
     onNowPlaying: (np) => {
-      lastNP = np || null;
-      if (np?.durationMs) lastDur = np.durationMs;
-      sockets.broadcast({ type: 'nowPlaying', data: lastNP });
-      console.log('[NP]', JSON.stringify(lastNP))
+      if (!np) return; // не шлём пустоту
+      const same = lastNP && JSON.stringify(lastNP) === JSON.stringify(np);
+      lastNP = np;
+      if (!same) sockets.broadcast({ type: 'nowPlaying', data: lastNP });
     },
     onStatus: (isPlaying) => {
       lastStatus = isPlaying;
       sockets.broadcast({ type: 'status', playing: isPlaying });
-      console.log('[NP]', JSON.stringify(lastNP))
     },
     onProgress: (posMs, durMs) => {
       lastPos = posMs; if (durMs) lastDur = durMs;
       sockets.broadcast({ type: 'progress', positionMs: lastPos, durationMs: lastDur });
-      console.log('[NP]', JSON.stringify(lastNP))
     }
   });
 

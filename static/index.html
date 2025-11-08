@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>NowPlaying Host — пульт</title>
+    <title>MediaHost</title>
     <style>
         :root { --muted:#6b7280; --border:#e5e7eb; }
         body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; color:#111 }
@@ -19,7 +19,7 @@
     </style>
 </head>
 <body>
-<h1>NowPlaying Host — пульт</h1>
+<h1>Media Host — пульт</h1>
 
 <div class="row">
     <button id="btnPrefer">Сделать Chrome активным</button>
@@ -78,10 +78,14 @@
     $('album').textContent = '—';
     $('player').textContent = '—';
     $('art').style.backgroundImage = 'none';
-    duration = 0; position = 0;
-    seek.max = '0'; seek.value = '0';
-    tpos.textContent = '0:00'; tdur.textContent = '0:00';
-    isPlaying = false; setPlayIcon();
+    duration = 0; 
+    position = 0;
+    seek.max = '0'; 
+    seek.value = '0';
+    tpos.textContent = '0:00'; 
+    tdur.textContent = '0:00';
+    isPlaying = false; 
+    setPlayIcon();
   }
 
   function renderNowPlaying(np){
@@ -121,7 +125,6 @@
     let msg; 
     try { 
       msg = JSON.parse(text);
-      console.log(msg.type, msg);  
     } catch { return; }
 
     if (msg.type === 'snapshot') {
@@ -131,33 +134,49 @@
         duration = msg.progress.durationMs || duration || 0;
         position = msg.progress.positionMs || 0;
         seek.max = String(duration);
-        if (!dragging) seek.value = String(Math.min(position, duration));
-        tpos.textContent = fmt(position); tdur.textContent = fmt(duration);
+        if (!dragging) {
+          seek.value = String(Math.min(position, duration));
+        }
+        tpos.textContent = fmt(position); 
+        tdur.textContent = fmt(duration);
       }
       return;
     }
 
     if (msg.type === 'nowPlaying') {
       const np = msg.data;
-      if (!np) { renderBlank(); return; }
+
+      // ...отрисовка метаданных...
       renderNowPlaying(np);
-      // при старте нового трека позицию сбрасываем
-      position = 0;
-      if (!dragging) seek.value = '0';
-      tpos.textContent = '0:00';
-      return;
+      
+      if (typeof np.isPaused === 'boolean') { 
+        isPlaying = !np.isPaused; 
+        setPlayIcon();
+      }
+      // сброс позиции на новом треке
+      // position = 0; 
+
+      // if (!dragging) {
+      //   seek.value = '0';
+      //   tpos.textContent = '0:00';
+      // }
+ 
+      if (typeof np.durationMs === 'number') { 
+        duration = np.durationMs; 
+        seek.max = String(duration); 
+        tdur.textContent = fmt(duration); 
+      }
     }
 
     if (msg.type === 'status') {
-      isPlaying = !!msg.playing;
+      isPlaying = !!msg.playing; 
       setPlayIcon();
-      return;
     }
 
     if (msg.type === 'progress') {
-      if (typeof msg.durationMs === 'number') {
-        duration = msg.durationMs;
-        seek.max = String(duration);
+      if (typeof msg.durationMs === 'number') { 
+        duration = msg.durationMs; 
+        seek.max = String(duration); 
         tdur.textContent = fmt(duration);
       }
       if (typeof msg.positionMs === 'number') {
@@ -165,7 +184,6 @@
         if (!dragging && duration > 0) seek.value = String(Math.min(position, duration));
         tpos.textContent = fmt(position);
       }
-      return;
     }
   };
 
@@ -183,9 +201,9 @@
   // команды
   const send = (cmd) => { try { ws.readyState === 1 && ws.send(JSON.stringify(cmd)); } catch {} };
   $('btnPrefer').onclick = () => send({ type:'preferChrome' });
-  $('btnPrev').onclick    = () => send({ type:'prev' });
-  btnToggle.onclick       = () => send({ type:'toggle' });
-  $('btnNext').onclick    = () => send({ type:'next' });
+  $('btnPrev').onclick = () => send({ type:'prev' });
+  btnToggle.onclick = () => send({ type:'toggle' });
+  $('btnNext').onclick = () => send({ type:'next' });
 </script>
 
 </body>
